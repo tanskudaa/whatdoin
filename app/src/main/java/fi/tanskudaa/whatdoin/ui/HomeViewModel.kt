@@ -1,0 +1,166 @@
+package fi.tanskudaa.whatdoin.ui
+
+import android.os.Environment
+import androidx.lifecycle.ViewModel
+import fi.tanskudaa.whatdoin.data.Activity
+import fi.tanskudaa.whatdoin.data.ActivityRepository
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
+import java.io.BufferedWriter
+import java.io.File
+import java.time.LocalDateTime
+import java.time.OffsetDateTime
+import java.time.format.DateTimeFormatter
+
+enum class OffsetMinutes(val value: Int) {
+    ZERO(0),
+    FIVE(5),
+    TEN(10),
+    FIFTEEN(15),
+}
+
+data class HomeUiState(
+    val currentActivityDescription: String = "",
+    val formattedActivityDuration: String = "",
+    val nextActivityInput: String = "",
+    val nextActivityOffset: OffsetMinutes = OffsetMinutes.ZERO,
+    val offsetsAvailable: (OffsetMinutes) -> Boolean = { false }
+)
+
+class HomeViewModel(private val activityRepository: ActivityRepository) : ViewModel() {
+    private val _uiState = MutableStateFlow(HomeUiState())
+    val uiState: StateFlow<HomeUiState> = _uiState.asStateFlow()
+
+    private var _currentActivityStartedAtMillis = 0L
+
+    private fun getFormattedDuration(durationSeconds: Long): String {
+        val hours = durationSeconds / 3600
+        val minutes = (durationSeconds / 60) % 60
+        val seconds = durationSeconds % 60
+
+        var result = ""
+        if (hours > 0) result += "${hours}h"
+        if (minutes > 0) result+= " ${minutes}m"
+        result += " ${seconds}s"
+
+        return result.trim()
+    }
+
+    fun updateDurationAndUiState() {
+        val deltaMillis = System.currentTimeMillis() - _currentActivityStartedAtMillis
+        _uiState.update {
+            it.copy(
+                formattedActivityDuration = getFormattedDuration(deltaMillis/1000)
+            )
+        }
+    }
+
+    fun updateOffsetAvailabilityState() {
+        val durationMinutes = (System.currentTimeMillis() - _currentActivityStartedAtMillis)/60_000
+        _uiState.update { state ->
+            state.copy(
+                offsetsAvailable = { offset -> durationMinutes > offset.value }
+            )
+        }
+    }
+
+    fun updateChosenOffset(newOffset: OffsetMinutes) {
+        _uiState.update {
+            it.copy(nextActivityOffset = newOffset)
+        }
+    }
+
+    fun updateNextActivityInput(input: String) {
+        _uiState.update {
+            it.copy(nextActivityInput = input )
+        }
+    }
+
+    suspend fun handleStartNextActivity() {
+        val newDescription = _uiState.value.nextActivityInput
+        val currentTimeMillis = System.currentTimeMillis()
+
+        val offsetMillis: Long = _uiState.value.nextActivityOffset.value * 60_000L
+
+        val recordedTimeMillis = currentTimeMillis - offsetMillis
+
+        _uiState.update {
+            it.copy(
+                currentActivityDescription = newDescription,
+                nextActivityInput = "",
+                nextActivityOffset = OffsetMinutes.ZERO,
+            )
+        }
+        _currentActivityStartedAtMillis = recordedTimeMillis
+        updateDurationAndUiState()
+
+        activityRepository.addAsNewCurrentActivity(
+            Activity(description = newDescription, startTime = recordedTimeMillis)
+        )
+    }
+
+    suspend fun exportAllToCSVFile(): Boolean {
+        val allActivities = activityRepository.getAllActivities()
+
+        val exportTimeFormatted = LocalDateTime.now().format(
+            DateTimeFormatter.ofPattern("yyyy-MM-dd_HH-mm-ss")
+        )
+
+        withContext(Dispatchers.IO) {
+            val target = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+            val f = File(target, "whatdoin_export_$exportTimeFormatted.csv")
+
+            val writer = BufferedWriter(f.writer(charset = Charsets.UTF_8))
+            writer.write("\"Started at\",Activity,Duration")
+            writer.newLine()
+
+            allActivities.forEachIndexed { index, activity ->
+                if (index + 1 >= allActivities.size) {
+                    return@forEachIndexed
+                }
+
+                val durationFormatted = getFormattedDuration(
+                    (allActivities[index + 1].startTime - activity.startTime)/1000
+                )
+                val startTimeFormatted = LocalDateTime.ofEpochSecond(
+                    activity.startTime/1000, 0, OffsetDateTime.now().offset
+                ).format(DateTimeFormatter.ISO_DATE_TIME)
+
+                val sanitizedDescription = activity.description.replace("\"", "\"\"")
+
+                writer.write("$startTimeFormatted,\"$sanitizedDescription\",\"$durationFormatted\"")
+                writer.newLine()
+            }
+
+            writer.flush()
+        }
+
+        return true
+    }
+
+    suspend fun updateCurrentActivityDescription(newDescription: String) {
+        _uiState.update {
+            it.copy(
+                currentActivityDescription = newDescription
+            )
+        }
+        activityRepository.changeCurrentActivityDescription(newDescription)
+    }
+
+    init {
+        val latestActivityFromDb = runBlocking {
+            activityRepository.getCurrentActivity()
+                ?: Activity(description = "???", startTime = System.currentTimeMillis())
+        }
+
+        _currentActivityStartedAtMillis = latestActivityFromDb.startTime
+        _uiState.update { it.copy(currentActivityDescription = latestActivityFromDb.description) }
+
+        updateDurationAndUiState()
+    }
+}
