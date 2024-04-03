@@ -27,9 +27,6 @@ enum class OffsetMinutes(val value: Int) {
 data class HomeUiState(
     val currentActivityDescription: String = "",
     val formattedActivityDuration: String = "",
-    val nextActivityInput: String = "",
-    val nextActivityOffset: OffsetMinutes = OffsetMinutes.ZERO,
-    val offsetsAvailable: (OffsetMinutes) -> Boolean = { false }
 )
 
 class HomeViewModel(private val activityRepository: ActivityRepository) : ViewModel() {
@@ -58,50 +55,6 @@ class HomeViewModel(private val activityRepository: ActivityRepository) : ViewMo
                 formattedActivityDuration = getFormattedDuration(deltaMillis/1000)
             )
         }
-    }
-
-    fun updateOffsetAvailabilityState() {
-        val durationMinutes = (System.currentTimeMillis() - _currentActivityStartedAtMillis)/60_000
-        _uiState.update { state ->
-            state.copy(
-                offsetsAvailable = { offset -> durationMinutes > offset.value }
-            )
-        }
-    }
-
-    fun updateChosenOffset(newOffset: OffsetMinutes) {
-        _uiState.update {
-            it.copy(nextActivityOffset = newOffset)
-        }
-    }
-
-    fun updateNextActivityInput(input: String) {
-        _uiState.update {
-            it.copy(nextActivityInput = input )
-        }
-    }
-
-    suspend fun handleStartNextActivity() {
-        val newDescription = _uiState.value.nextActivityInput
-        val currentTimeMillis = System.currentTimeMillis()
-
-        val offsetMillis: Long = _uiState.value.nextActivityOffset.value * 60_000L
-
-        val recordedTimeMillis = currentTimeMillis - offsetMillis
-
-        _uiState.update {
-            it.copy(
-                currentActivityDescription = newDescription,
-                nextActivityInput = "",
-                nextActivityOffset = OffsetMinutes.ZERO,
-            )
-        }
-        _currentActivityStartedAtMillis = recordedTimeMillis
-        updateDurationAndUiState()
-
-        activityRepository.addAsNewCurrentActivity(
-            Activity(description = newDescription, startTime = recordedTimeMillis)
-        )
     }
 
     suspend fun exportAllToCSVFile(): Boolean {
@@ -143,6 +96,23 @@ class HomeViewModel(private val activityRepository: ActivityRepository) : ViewMo
         return true
     }
 
+    suspend fun switchToNewActivity(newDescription: String, offset: OffsetMinutes) {
+        val offsetMillis = offset.value * 60_000L
+        val recordedTimeMilllis = System.currentTimeMillis() - offsetMillis
+
+        _uiState.update {
+            it.copy(
+                currentActivityDescription = newDescription,
+            )
+        }
+        _currentActivityStartedAtMillis = recordedTimeMilllis
+        updateDurationAndUiState()
+
+        activityRepository.addAsNewCurrentActivity(
+            Activity(description = newDescription, startTime = recordedTimeMilllis)
+        )
+    }
+
     suspend fun updateCurrentActivityDescription(newDescription: String) {
         _uiState.update {
             it.copy(
@@ -151,6 +121,9 @@ class HomeViewModel(private val activityRepository: ActivityRepository) : ViewMo
         }
         activityRepository.changeCurrentActivityDescription(newDescription)
     }
+
+    fun getOffsetAvailability(): (OffsetMinutes) -> Boolean =
+        { offset -> (System.currentTimeMillis() - _currentActivityStartedAtMillis)/60_000L > offset.value }
 
     init {
         val latestActivityFromDb = runBlocking {

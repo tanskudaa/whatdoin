@@ -6,7 +6,6 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -20,7 +19,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.windowInsetsTopHeight
-import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material3.AlertDialog
@@ -46,12 +44,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.FocusState
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.ui.focus.onFocusEvent
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
@@ -159,8 +153,8 @@ fun NextActivityAnimatedButton(onClick: () -> Unit) {
 
 @Composable
 fun ExportDialog(
-    onDismissRequest: () -> Unit,
-    onAccept: () -> Unit
+    onDismiss: () -> Unit,
+    onAccept: () -> Unit,
 ) {
     AlertDialog(
         icon = { Icon(Icons.Default.Send, contentDescription = null) },
@@ -172,7 +166,7 @@ fun ExportDialog(
         text = { Text(
             text = "Do you want to export all logged activities into a CSV file? The file will be created in your device's Downloads folder."
         )},
-        onDismissRequest = onDismissRequest,
+        onDismissRequest = onDismiss,
         confirmButton = {
             TextButton(
                 onClick = onAccept
@@ -182,7 +176,7 @@ fun ExportDialog(
         },
         dismissButton = {
             TextButton(
-                onClick = onDismissRequest
+                onClick = onDismiss
             ) {
                 Text("Cancel")
             }
@@ -257,26 +251,36 @@ fun ChangeCurrentDescriptionDialog(
     }
 }
 
+@Preview
+@Composable
+fun PreviewChangeCurrentDescriptionDialog() {
+    WhatDoinTheme {
+        ChangeCurrentDescriptionDialog({}, "", {})
+    }
+}
+
 @Composable
 fun NewActivityDialog(
     onDismiss: () -> Unit,
-    onAccept: () -> Unit,
-    inputTextValue: String,
-    onInputTextChange: (String) -> Unit,
-    offsetValue: OffsetMinutes,
-    onOffsetChange: (OffsetMinutes) -> Unit,
+    switchToNewActivity: (String, OffsetMinutes) -> Unit,
     isOffsetAvailable: (OffsetMinutes) -> Boolean,
 ) {
     val focusRequester = remember { FocusRequester() }
-
-    fun onCancel() {
-        onDismiss()
-        onInputTextChange("")
-        onOffsetChange(OffsetMinutes.ZERO)
-    }
+    var textInputValue by remember { mutableStateOf(TextFieldValue()) }
+    var offsetInputValue by remember { mutableStateOf(OffsetMinutes.ZERO) }
 
     LaunchedEffect(Unit) {
         focusRequester.requestFocus()
+    }
+
+    fun isFormValid() =
+        isOffsetAvailable(offsetInputValue) && textInputValue.text.length >= 3
+
+    fun isUserTooFast() = !isOffsetAvailable(offsetInputValue)
+
+    fun onAccept() {
+        onDismiss()
+        switchToNewActivity(textInputValue.text, offsetInputValue)
     }
 
     @Composable
@@ -286,15 +290,15 @@ fun NewActivityDialog(
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             RadioButton(
-                selected = offsetValue == offset,
-                onClick = { onOffsetChange(offset) },
+                selected = offsetInputValue == offset,
+                onClick = { offsetInputValue = offset },
                 enabled = isOffsetAvailable(offset)
             )
             Text(text)
         }
     }
 
-    Dialog(onDismissRequest = { onCancel() }) {
+    Dialog(onDismissRequest = onDismiss) {
         ElevatedCard {
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
@@ -305,9 +309,9 @@ fun NewActivityDialog(
                     style = MaterialTheme.typography.headlineSmall,
                 )
                 TextField(
-                    value = inputTextValue,
+                    value = textInputValue,
                     singleLine = true,
-                    onValueChange = { onInputTextChange(it) },
+                    onValueChange = { textInputValue = it },
                     modifier = Modifier
                         .focusRequester(focusRequester)
                         .padding(20.dp)
@@ -348,11 +352,19 @@ fun NewActivityDialog(
                         .fillMaxWidth()
                         .padding(end = 20.dp, bottom = 20.dp)
                 ) {
-                    TextButton(onClick = { onCancel() }) {
+                    TextButton(onClick = onDismiss) {
                         Text("Cancel")
                     }
-                    TextButton(onClick = onAccept) {
-                        Text("Start!")
+                    TextButton(
+                        onClick = { onAccept() },
+                        enabled = isFormValid()
+                    ) {
+                        Text(
+                            text = if (!isUserTooFast())
+                                "Start!"
+                            else
+                                "Slow down!"
+                        )
                     }
                 }
             }
@@ -366,12 +378,8 @@ fun PreviewNewActivityDialog() {
     WhatDoinTheme {
         NewActivityDialog(
             onDismiss = {},
-            onAccept = {},
-            onInputTextChange = {},
-            inputTextValue = "user input",
-            onOffsetChange = {},
-            offsetValue = OffsetMinutes.TEN,
-            isOffsetAvailable = { false }
+            switchToNewActivity = { _, _ -> },
+            isOffsetAvailable = { true }
         )
     }
 }
@@ -382,12 +390,11 @@ fun HomeScreen(
 ) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
+    val uiState by homeViewModel.uiState.collectAsState()
 
-    var openNewActivityDialog by remember { mutableStateOf(false) }
     var openExportDialog by remember { mutableStateOf(false) }
     var openChangeDescriptionDialog by remember { mutableStateOf(false) }
-
-    val uiState by homeViewModel.uiState.collectAsState()
+    var openNewActivityDialog by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
         while(true) {
@@ -398,39 +405,33 @@ fun HomeScreen(
 
     fun handleExportAndShowToast() = coroutineScope.launch {
             val writeSuccess = homeViewModel.exportAllToCSVFile()
-            if (writeSuccess) {
-                Toast.makeText(
-                    context,
-                    "All activities exported to Downloads folder",
-                    Toast.LENGTH_LONG
-                ).show()
-            } else {
-                Toast.makeText(
-                    context,
-                    "Error occured in saving",
-                    Toast.LENGTH_LONG
-                ).show()
-            }
+            val toastMessageText =
+                if (writeSuccess)
+                    "All activities exported to Downloads folder"
+                else
+                    "Error occured during saving"
+
+            Toast.makeText(
+                context,
+                toastMessageText,
+                Toast.LENGTH_LONG
+            ).show()
         }
 
-    fun handleCurrentActivityDescriptionChange(newDescription: String) {
-        coroutineScope.launch {
-            homeViewModel.updateCurrentActivityDescription(newDescription)
-        }
-    }
-
-    HomeScreenBody(
-        activityDescription = uiState.currentActivityDescription,
-        formattedDuration = uiState.formattedActivityDuration,
+    HomeScreenStateless(
+        currentActivityDescription = uiState.currentActivityDescription,
+        formattedOngoingDuration = uiState.formattedActivityDuration,
         onExportClick = { openExportDialog = true },
         onStartNextActivityClick = { openNewActivityDialog = true },
-        onClickDescriptionText = { openChangeDescriptionDialog = true },
+        onDescriptionTextClick = { openChangeDescriptionDialog = true },
     )
 
     when {
         openExportDialog -> {
             ExportDialog(
-                onDismissRequest = { openExportDialog = false },
+                onDismiss = {
+                    openExportDialog = false
+                },
                 onAccept = {
                     handleExportAndShowToast()
                     openExportDialog = false
@@ -441,39 +442,34 @@ fun HomeScreen(
             ChangeCurrentDescriptionDialog(
                 onDismiss = { openChangeDescriptionDialog = false },
                 initialDescriptionText = uiState.currentActivityDescription,
-                updateCurrentActivityDescription = { handleCurrentActivityDescriptionChange(it) }
+                updateCurrentActivityDescription = {
+                    coroutineScope.launch {
+                        homeViewModel.updateCurrentActivityDescription(it)
+                    }
+                }
             )
         }
         openNewActivityDialog -> {
-            LaunchedEffect(Unit) {
-                homeViewModel.updateOffsetAvailabilityState()
-            }
-
             NewActivityDialog(
                 onDismiss = { openNewActivityDialog = false },
-                onAccept = {
+                switchToNewActivity = { newDescription, offset ->
                     coroutineScope.launch {
-                        homeViewModel.handleStartNextActivity()
-                        openNewActivityDialog = false
+                        homeViewModel.switchToNewActivity(newDescription, offset)
                     }
                 },
-                onInputTextChange = homeViewModel::updateNextActivityInput,
-                inputTextValue = uiState.nextActivityInput,
-                onOffsetChange = homeViewModel::updateChosenOffset,
-                offsetValue = uiState.nextActivityOffset,
-                isOffsetAvailable = uiState.offsetsAvailable
+                isOffsetAvailable = homeViewModel.getOffsetAvailability(),
             )
         }
     }
 }
 
 @Composable
-fun HomeScreenBody(
-    activityDescription: String,
-    formattedDuration: String,
+fun HomeScreenStateless(
+    currentActivityDescription: String,
+    formattedOngoingDuration: String,
     onExportClick: () -> Unit,
     onStartNextActivityClick: () -> Unit,
-    onClickDescriptionText: () -> Unit,
+    onDescriptionTextClick: () -> Unit,
 ) {
     Column(
         horizontalAlignment = Alignment.End,
@@ -488,9 +484,9 @@ fun HomeScreenBody(
         verticalArrangement = Arrangement.Center,
     ) {
         CurrentActivityStatusBody(
-            activityDescription = activityDescription,
-            formattedDuration = formattedDuration,
-            onClickDescriptionText = onClickDescriptionText,
+            activityDescription = currentActivityDescription,
+            formattedDuration = formattedOngoingDuration,
+            onClickDescriptionText = onDescriptionTextClick,
         )
         Spacer(modifier = Modifier.size(128.dp))
     }
@@ -510,7 +506,7 @@ fun HomeScreenBody(
 fun PreviewHomeScreen() {
     WhatDoinTheme {
         Surface(modifier = Modifier.fillMaxSize()) {
-            HomeScreenBody("placeholder activity", "1h 23min 45s", {}, {}, {})
+            HomeScreenStateless("placeholder activity", "1h 23min 45s", {}, {}, {})
         }
     }
 }
