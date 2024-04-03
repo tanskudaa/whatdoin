@@ -6,6 +6,7 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -40,12 +41,17 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.FocusState
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.focus.onFocusEvent
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
@@ -76,54 +82,20 @@ fun ExportButton(onClick: () -> Unit) {
 fun CurrentActivityStatusBody(
     activityDescription: String,
     formattedDuration: String,
-    onChangeCurrentActivityDescription: (String) -> Unit,
+    onClickDescriptionText: () -> Unit,
 ) {
-    val modifyDescription = remember { mutableStateOf(false) }
-    val focusRequester = remember { FocusRequester() }
-
     Column(
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Text(text = "You've been doin'")
 
         ElevatedCard {
-            when (modifyDescription.value) {
-                false ->
-                    TextButton(onClick = { modifyDescription.value = true }) {
-                        Text(
-                            text = activityDescription,
-                            style = MaterialTheme.typography.bodyLarge,
-                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
-                        )
-                    }
-                true -> {
-                    val newInputDescription = remember { mutableStateOf(
-                        TextFieldValue(
-                            text = activityDescription,
-                            selection = TextRange(activityDescription.length),
-                        )
-                    )}
-
-                    fun onDone() {
-                        modifyDescription.value = false
-                        onChangeCurrentActivityDescription(newInputDescription.value.text)
-                    }
-
-                    LaunchedEffect(Unit) {
-                        focusRequester.requestFocus()
-                    }
-
-                    TextField(
-                        value = newInputDescription.value,
-                        textStyle = MaterialTheme.typography.bodyLarge,
-                        singleLine = true,
-                        keyboardActions = KeyboardActions(onDone = { onDone() }),
-                        onValueChange = { newInputDescription.value = it },
-                        modifier = Modifier
-                            .focusRequester(focusRequester)
-                            .padding(16.dp, vertical = 8.dp)
-                    )
-                }
+            TextButton(onClick = onClickDescriptionText) {
+                Text(
+                    text = activityDescription,
+                    style = MaterialTheme.typography.bodyLarge,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                )
             }
         }
 
@@ -223,6 +195,65 @@ fun ExportDialog(
 fun PreviewExportDialog() {
     WhatDoinTheme {
         ExportDialog({}, {})
+    }
+}
+
+@Composable
+fun ChangeCurrentDescriptionDialog(
+    onDismiss: () -> Unit,
+    initialDescriptionText: String,
+    updateCurrentActivityDescription: (String) -> Unit,
+) {
+    val focusRequester = remember { FocusRequester() }
+    var inputTextValue by remember { mutableStateOf(TextFieldValue(
+        text = initialDescriptionText,
+        selection = TextRange(initialDescriptionText.length)
+    ))}
+
+    fun onAccept() {
+        onDismiss()
+        updateCurrentActivityDescription(inputTextValue.text)
+    }
+
+    LaunchedEffect(Unit) {
+        focusRequester.requestFocus()
+    }
+
+    Dialog(onDismissRequest = onDismiss) {
+        ElevatedCard {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Spacer(modifier = Modifier.height(24.dp))
+                Text(
+                    text = "Change current activity description",
+                    style = MaterialTheme.typography.headlineSmall,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                TextField(
+                    value = inputTextValue,
+                    singleLine = true,
+                    onValueChange = { inputTextValue = it },
+                    modifier = Modifier
+                        .focusRequester(focusRequester)
+                        .padding(20.dp)
+                )
+                Row(
+                    horizontalArrangement = Arrangement.End,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(end = 20.dp, bottom = 20.dp)
+                ) {
+                    TextButton(onClick = onDismiss) {
+                        Text("Cancel")
+                    }
+                    TextButton(onClick = { onAccept() }) {
+                        Text("Done")
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -351,8 +382,11 @@ fun HomeScreen(
 ) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
-    val openNewActivityDialog = remember { mutableStateOf(false) }
-    val openExportDialog = remember { mutableStateOf(false) }
+
+    var openNewActivityDialog by remember { mutableStateOf(false) }
+    var openExportDialog by remember { mutableStateOf(false) }
+    var openChangeDescriptionDialog by remember { mutableStateOf(false) }
+
     val uiState by homeViewModel.uiState.collectAsState()
 
     LaunchedEffect(Unit) {
@@ -388,32 +422,39 @@ fun HomeScreen(
     HomeScreenBody(
         activityDescription = uiState.currentActivityDescription,
         formattedDuration = uiState.formattedActivityDuration,
-        onExportClick = { openExportDialog.value = true },
-        onStartNextActivityClick = { openNewActivityDialog.value = true },
-        onChangeCurrentActivityDescription = { handleCurrentActivityDescriptionChange(it) },
+        onExportClick = { openExportDialog = true },
+        onStartNextActivityClick = { openNewActivityDialog = true },
+        onClickDescriptionText = { openChangeDescriptionDialog = true },
     )
 
     when {
-        openExportDialog.value -> {
+        openExportDialog -> {
             ExportDialog(
-                onDismissRequest = { openExportDialog.value = false },
+                onDismissRequest = { openExportDialog = false },
                 onAccept = {
                     handleExportAndShowToast()
-                    openExportDialog.value = false
+                    openExportDialog = false
                 }
             )
         }
-        openNewActivityDialog.value -> {
+        openChangeDescriptionDialog -> {
+            ChangeCurrentDescriptionDialog(
+                onDismiss = { openChangeDescriptionDialog = false },
+                initialDescriptionText = uiState.currentActivityDescription,
+                updateCurrentActivityDescription = { handleCurrentActivityDescriptionChange(it) }
+            )
+        }
+        openNewActivityDialog -> {
             LaunchedEffect(Unit) {
                 homeViewModel.updateOffsetAvailabilityState()
             }
 
             NewActivityDialog(
-                onDismiss = { openNewActivityDialog.value = false },
+                onDismiss = { openNewActivityDialog = false },
                 onAccept = {
                     coroutineScope.launch {
                         homeViewModel.handleStartNextActivity()
-                        openNewActivityDialog.value = false
+                        openNewActivityDialog = false
                     }
                 },
                 onInputTextChange = homeViewModel::updateNextActivityInput,
@@ -432,7 +473,7 @@ fun HomeScreenBody(
     formattedDuration: String,
     onExportClick: () -> Unit,
     onStartNextActivityClick: () -> Unit,
-    onChangeCurrentActivityDescription: (String) -> Unit,
+    onClickDescriptionText: () -> Unit,
 ) {
     Column(
         horizontalAlignment = Alignment.End,
@@ -449,7 +490,7 @@ fun HomeScreenBody(
         CurrentActivityStatusBody(
             activityDescription = activityDescription,
             formattedDuration = formattedDuration,
-            onChangeCurrentActivityDescription = onChangeCurrentActivityDescription
+            onClickDescriptionText = onClickDescriptionText,
         )
         Spacer(modifier = Modifier.size(128.dp))
     }
