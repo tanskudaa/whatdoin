@@ -269,19 +269,14 @@ fun NewActivityDialog(
             ) -> Unit,
     isOffsetAvailable: (OffsetMinutes) -> Boolean,
 ) {
-    val focusRequester = remember { FocusRequester() }
+    var isOnSecondPage by remember { mutableStateOf(false) }
     var postscriptInputValue by remember { mutableStateOf(TextFieldValue()) }
     var newDescriptionInputValue by remember { mutableStateOf(TextFieldValue()) }
     var offsetInputValue by remember { mutableStateOf(OffsetMinutes.ZERO) }
 
-    LaunchedEffect(Unit) {
-        focusRequester.requestFocus()
-    }
-
+    fun isUserTooFast() = !isOffsetAvailable(offsetInputValue)
     fun isFormValid() =
         isOffsetAvailable(offsetInputValue) && newDescriptionInputValue.text.length >= 3
-
-    fun isUserTooFast() = !isOffsetAvailable(offsetInputValue)
 
     fun onAccept() {
         onDismiss()
@@ -307,75 +302,121 @@ fun NewActivityDialog(
         }
     }
 
+    @Composable
+    fun Page1Body() {
+        Column {
+            Spacer(modifier = Modifier.height(24.dp))
+            Text(
+                text = "Thoughts on your ending activity?",
+                style = MaterialTheme.typography.headlineSmall,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            TextField(
+                value = postscriptInputValue,
+                singleLine = true,
+                onValueChange = { postscriptInputValue = it },
+                modifier = Modifier.padding(20.dp)
+            )
+            Row(
+                horizontalArrangement = Arrangement.End,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(end = 20.dp, bottom = 20.dp)
+            ) {
+                TextButton(onClick = onDismiss) {
+                    Text("Cancel")
+                }
+                TextButton(
+                    onClick = { isOnSecondPage = true },
+                ) {
+                    Text(
+                        text = if (postscriptInputValue.text.length > 0)
+                            "Next"
+                        else
+                            "Nah"
+                    )
+                }
+            }
+        }
+    }
+
+    @Composable
+    fun Page2Body() {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Spacer(modifier = Modifier.height(24.dp))
+            Text(
+                text = "What you goin' to do?",
+                style = MaterialTheme.typography.headlineSmall,
+            )
+            TextField(
+                value = newDescriptionInputValue,
+                singleLine = true,
+                onValueChange = { newDescriptionInputValue = it },
+                modifier = Modifier.padding(20.dp)
+            )
+            Text(
+                text = "Shoot! I forgot to log this when I started, it was actually:",
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = 20.dp, end = 20.dp, bottom = 8.dp)
+            )
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 24.dp),
+                horizontalAlignment = Alignment.Start
+            )
+            {
+                OffsetRadioWithLabel(
+                    text = "Now",
+                    offset = OffsetMinutes.ZERO,
+                )
+                OffsetRadioWithLabel(
+                    text = "5 minutes ago",
+                    offset = OffsetMinutes.FIVE,
+                )
+                OffsetRadioWithLabel(
+                    text = "10 minutes ago",
+                    offset = OffsetMinutes.TEN,
+                )
+                OffsetRadioWithLabel(
+                    text = "15 minutes ago",
+                    offset = OffsetMinutes.FIFTEEN,
+                )
+            }
+            Row(
+                horizontalArrangement = Arrangement.End,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(end = 20.dp, bottom = 20.dp)
+            ) {
+                TextButton(onClick = { isOnSecondPage = false }) {
+                    Text("Back")
+                }
+                TextButton(
+                    onClick = { onAccept() },
+                    enabled = isFormValid()
+                ) {
+                    Text(
+                        text = if (!isUserTooFast())
+                            "Start!"
+                        else
+                            "Slow down!"
+                    )
+                }
+            }
+        }
+    }
+
     Dialog(onDismissRequest = onDismiss) {
         ElevatedCard {
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-            ) {
-                Spacer(modifier = Modifier.height(24.dp))
-                Text(
-                    text = "What you goin' to do?",
-                    style = MaterialTheme.typography.headlineSmall,
-                )
-                TextField(
-                    value = newDescriptionInputValue,
-                    singleLine = true,
-                    onValueChange = { newDescriptionInputValue = it },
-                    modifier = Modifier
-                        .focusRequester(focusRequester)
-                        .padding(20.dp)
-                )
-                Text(
-                    text = "Shoot! I forgot to log this when I started, it was actually:",
-                    style = MaterialTheme.typography.bodyMedium,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(start = 20.dp, end = 20.dp, bottom = 8.dp)
-                )
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 24.dp),
-                    horizontalAlignment = Alignment.Start)
-                {
-                    OffsetRadioWithLabel(
-                        text = "Now",
-                        offset = OffsetMinutes.ZERO,
-                    )
-                    OffsetRadioWithLabel(
-                        text = "5 minutes ago",
-                        offset = OffsetMinutes.FIVE,
-                    )
-                    OffsetRadioWithLabel(
-                        text = "10 minutes ago",
-                        offset = OffsetMinutes.TEN,
-                    )
-                    OffsetRadioWithLabel(
-                        text = "15 minutes ago",
-                        offset = OffsetMinutes.FIFTEEN,
-                    )
-                }
-                Row(
-                    horizontalArrangement = Arrangement.End,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(end = 20.dp, bottom = 20.dp)
-                ) {
-                    TextButton(onClick = onDismiss) {
-                        Text("Cancel")
-                    }
-                    TextButton(
-                        onClick = { onAccept() },
-                        enabled = isFormValid()
-                    ) {
-                        Text(
-                            text = if (!isUserTooFast())
-                                "Start!"
-                            else
-                                "Slow down!"
-                        )
-                    }
-                }
+            when (isOnSecondPage) {
+                false -> Page1Body()
+                true -> Page2Body()
             }
         }
     }

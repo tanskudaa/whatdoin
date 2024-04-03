@@ -70,7 +70,7 @@ class HomeViewModel(private val activityRepository: ActivityRepository) : ViewMo
             val f = File(target, "whatdoin_export_$exportTimeFormatted.csv")
 
             val writer = BufferedWriter(f.writer(charset = Charsets.UTF_8))
-            writer.write("\"Started at\",Activity,Duration")
+            writer.write("\"Started at\",Activity,Duration,\"Thoughts afterwards\"")
             writer.newLine()
 
             allActivities.forEachIndexed { index, activity ->
@@ -85,9 +85,12 @@ class HomeViewModel(private val activityRepository: ActivityRepository) : ViewMo
                     activity.startTime/1000, 0, OffsetDateTime.now().offset
                 ).format(DateTimeFormatter.ISO_DATE_TIME)
 
-                val sanitizedDescription = activity.description.replace("\"", "\"\"")
+                fun String.sanitizeForCSVWrite() = this.replace("\"", "\"\"")
 
-                writer.write("$startTimeFormatted,\"$sanitizedDescription\",\"$durationFormatted\"")
+                val sanitizedDescription = activity.description.sanitizeForCSVWrite()
+                val sanitizedPostscript = activity.postscript.sanitizeForCSVWrite()
+
+                writer.write("$startTimeFormatted,\"$sanitizedDescription\",\"$durationFormatted\",\"$sanitizedPostscript\"")
                 writer.newLine()
             }
 
