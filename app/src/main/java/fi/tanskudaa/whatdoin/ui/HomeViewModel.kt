@@ -34,6 +34,7 @@ class HomeViewModel(private val activityRepository: ActivityRepository) : ViewMo
     val uiState: StateFlow<HomeUiState> = _uiState.asStateFlow()
 
     private var _currentActivityStartedAtMillis = 0L
+    private var _currentActivityDatabaseId: Long? = null
 
     private fun getFormattedDuration(durationSeconds: Long): String {
         val hours = durationSeconds / 3600
@@ -96,7 +97,19 @@ class HomeViewModel(private val activityRepository: ActivityRepository) : ViewMo
         return true
     }
 
-    suspend fun switchToNewActivity(newDescription: String, offset: OffsetMinutes) {
+    suspend fun updatePostscriptAndSwitchToNewActivity(
+        postscript: String,
+        newDescription: String,
+        offset: OffsetMinutes)
+    {
+        // update current activity's postscript, if exists
+        if (_currentActivityDatabaseId != null) {
+            activityRepository.updateActivityPostscript(
+                _currentActivityDatabaseId!!,
+                postscript
+            )
+        }
+
         val offsetMillis = offset.value * 60_000L
         val recordedTimeMilllis = System.currentTimeMillis() - offsetMillis
 
@@ -128,11 +141,17 @@ class HomeViewModel(private val activityRepository: ActivityRepository) : ViewMo
     init {
         val latestActivityFromDb = runBlocking {
             activityRepository.getCurrentActivity()
-                ?: Activity(description = "???", startTime = System.currentTimeMillis())
         }
 
-        _currentActivityStartedAtMillis = latestActivityFromDb.startTime
-        _uiState.update { it.copy(currentActivityDescription = latestActivityFromDb.description) }
+        if (latestActivityFromDb == null) { // first start/empty database
+            /* _currentActivityDatabaseId = null */
+            _currentActivityStartedAtMillis = System.currentTimeMillis()
+            _uiState.update { it.copy(currentActivityDescription = "???") }
+        } else {
+            _currentActivityDatabaseId = latestActivityFromDb.id
+            _currentActivityStartedAtMillis = latestActivityFromDb.startTime
+            _uiState.update { it.copy(currentActivityDescription = latestActivityFromDb.description) }
+        }
 
         updateDurationAndUiState()
     }

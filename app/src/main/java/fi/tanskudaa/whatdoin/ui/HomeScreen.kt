@@ -262,11 +262,16 @@ fun PreviewChangeCurrentDescriptionDialog() {
 @Composable
 fun NewActivityDialog(
     onDismiss: () -> Unit,
-    switchToNewActivity: (String, OffsetMinutes) -> Unit,
+    switchToNewActivity: (
+        postscript: String,
+        newDescription: String,
+        offset: OffsetMinutes
+            ) -> Unit,
     isOffsetAvailable: (OffsetMinutes) -> Boolean,
 ) {
     val focusRequester = remember { FocusRequester() }
-    var textInputValue by remember { mutableStateOf(TextFieldValue()) }
+    var postscriptInputValue by remember { mutableStateOf(TextFieldValue()) }
+    var newDescriptionInputValue by remember { mutableStateOf(TextFieldValue()) }
     var offsetInputValue by remember { mutableStateOf(OffsetMinutes.ZERO) }
 
     LaunchedEffect(Unit) {
@@ -274,13 +279,17 @@ fun NewActivityDialog(
     }
 
     fun isFormValid() =
-        isOffsetAvailable(offsetInputValue) && textInputValue.text.length >= 3
+        isOffsetAvailable(offsetInputValue) && newDescriptionInputValue.text.length >= 3
 
     fun isUserTooFast() = !isOffsetAvailable(offsetInputValue)
 
     fun onAccept() {
         onDismiss()
-        switchToNewActivity(textInputValue.text, offsetInputValue)
+        switchToNewActivity(
+            postscriptInputValue.text,
+            newDescriptionInputValue.text,
+            offsetInputValue
+        )
     }
 
     @Composable
@@ -309,9 +318,9 @@ fun NewActivityDialog(
                     style = MaterialTheme.typography.headlineSmall,
                 )
                 TextField(
-                    value = textInputValue,
+                    value = newDescriptionInputValue,
                     singleLine = true,
-                    onValueChange = { textInputValue = it },
+                    onValueChange = { newDescriptionInputValue = it },
                     modifier = Modifier
                         .focusRequester(focusRequester)
                         .padding(20.dp)
@@ -378,7 +387,7 @@ fun PreviewNewActivityDialog() {
     WhatDoinTheme {
         NewActivityDialog(
             onDismiss = {},
-            switchToNewActivity = { _, _ -> },
+            switchToNewActivity = { _, _, _ -> },
             isOffsetAvailable = { true }
         )
     }
@@ -452,9 +461,9 @@ fun HomeScreen(
         openNewActivityDialog -> {
             NewActivityDialog(
                 onDismiss = { openNewActivityDialog = false },
-                switchToNewActivity = { newDescription, offset ->
+                switchToNewActivity = { postscript, newDescription, offset ->
                     coroutineScope.launch {
-                        homeViewModel.switchToNewActivity(newDescription, offset)
+                        homeViewModel.updatePostscriptAndSwitchToNewActivity(postscript, newDescription, offset)
                     }
                 },
                 isOffsetAvailable = homeViewModel.getOffsetAvailability(),

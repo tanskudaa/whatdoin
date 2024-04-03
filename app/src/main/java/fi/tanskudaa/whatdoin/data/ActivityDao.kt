@@ -11,6 +11,9 @@ interface ActivityDao {
     @Query("SELECT * FROM activity ORDER BY id DESC LIMIT 1")
     suspend fun getLatestEntry(): Activity?
 
+    @Query("SELECT * FROM activity WHERE id = :id")
+    suspend fun getById(id: Long): Activity?
+
     @Query("SELECT * FROM activity ORDER BY id ASC")
     suspend fun getAll(): List<Activity>
 

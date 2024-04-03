@@ -1,15 +1,19 @@
 package fi.tanskudaa.whatdoin.data
 
 import android.content.Context
+import androidx.room.AutoMigration
 import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
 
-const val DATABASE_VERSION = 1
+const val DATABASE_VERSION = 2
 
 @Database(
-    entities = [Activity::class],
     version = DATABASE_VERSION,
+    entities = [Activity::class],
+    autoMigrations = [
+        AutoMigration(1, 2)
+                     ],
     exportSchema = true
 )
 abstract class ActivityDatabase : RoomDatabase() {
