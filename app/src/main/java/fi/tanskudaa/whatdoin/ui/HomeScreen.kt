@@ -262,6 +262,7 @@ fun PreviewChangeCurrentDescriptionDialog() {
 @Composable
 fun NewActivityDialog(
     onDismiss: () -> Unit,
+    isFirstEverActivity: Boolean,
     switchToNewActivity: (
         postscript: String,
         newDescription: String,
@@ -269,14 +270,23 @@ fun NewActivityDialog(
             ) -> Unit,
     isOffsetAvailable: (OffsetMinutes) -> Boolean,
 ) {
-    var isOnSecondPage by remember { mutableStateOf(false) }
+    var isOnSecondPage by remember { mutableStateOf(isFirstEverActivity) }
     var postscriptInputValue by remember { mutableStateOf(TextFieldValue()) }
     var newDescriptionInputValue by remember { mutableStateOf(TextFieldValue()) }
     var offsetInputValue by remember { mutableStateOf(OffsetMinutes.ZERO) }
 
-    fun isUserTooFast() = !isOffsetAvailable(offsetInputValue)
+    fun firstLaunchAwareIsOffsetAvailable(offset: OffsetMinutes): Boolean {
+        return if (isFirstEverActivity) {
+            true
+        } else {
+            isOffsetAvailable(offset)
+        }
+    }
+
+    fun isUserTooFast() =
+        !firstLaunchAwareIsOffsetAvailable(offsetInputValue)
     fun isFormValid() =
-        isOffsetAvailable(offsetInputValue) && newDescriptionInputValue.text.length >= 3
+        firstLaunchAwareIsOffsetAvailable(offsetInputValue) && newDescriptionInputValue.text.length >= 3
 
     fun onAccept() {
         onDismiss()
@@ -296,7 +306,7 @@ fun NewActivityDialog(
             RadioButton(
                 selected = offsetInputValue == offset,
                 onClick = { offsetInputValue = offset },
-                enabled = isOffsetAvailable(offset)
+                enabled = firstLaunchAwareIsOffsetAvailable(offset)
             )
             Text(text)
         }
@@ -394,8 +404,14 @@ fun NewActivityDialog(
                     .fillMaxWidth()
                     .padding(end = 20.dp, bottom = 20.dp)
             ) {
-                TextButton(onClick = { isOnSecondPage = false }) {
-                    Text("Back")
+                if (isFirstEverActivity) {
+                    TextButton(onClick = onDismiss) {
+                        Text("Cancel")
+                    }
+                } else {
+                    TextButton(onClick = { isOnSecondPage = false }) {
+                        Text("Back")
+                    }
                 }
                 TextButton(
                     onClick = { onAccept() },
@@ -428,8 +444,9 @@ fun PreviewNewActivityDialog() {
     WhatDoinTheme {
         NewActivityDialog(
             onDismiss = {},
+            isFirstEverActivity = false,
             switchToNewActivity = { _, _, _ -> },
-            isOffsetAvailable = { true }
+            isOffsetAvailable = { true },
         )
     }
 }
@@ -471,6 +488,7 @@ fun HomeScreen(
     HomeScreenStateless(
         currentActivityDescription = uiState.currentActivityDescription,
         formattedOngoingDuration = uiState.formattedActivityDuration,
+        showExportButton = !homeViewModel.isDatabaseEmpty(),
         onExportClick = { openExportDialog = true },
         onStartNextActivityClick = { openNewActivityDialog = true },
         onDescriptionTextClick = { openChangeDescriptionDialog = true },
@@ -502,6 +520,7 @@ fun HomeScreen(
         openNewActivityDialog -> {
             NewActivityDialog(
                 onDismiss = { openNewActivityDialog = false },
+                isFirstEverActivity = homeViewModel.isDatabaseEmpty(),
                 switchToNewActivity = { postscript, newDescription, offset ->
                     coroutineScope.launch {
                         homeViewModel.updatePostscriptAndSwitchToNewActivity(postscript, newDescription, offset)
@@ -517,16 +536,19 @@ fun HomeScreen(
 fun HomeScreenStateless(
     currentActivityDescription: String,
     formattedOngoingDuration: String,
+    showExportButton: Boolean,
     onExportClick: () -> Unit,
     onStartNextActivityClick: () -> Unit,
     onDescriptionTextClick: () -> Unit,
 ) {
-    Column(
-        horizontalAlignment = Alignment.End,
-        verticalArrangement = Arrangement.Top,
-    ) {
-        Spacer(modifier = Modifier.windowInsetsTopHeight(WindowInsets.statusBars))
-        ExportButton(onClick = onExportClick)
+    if (showExportButton) {
+        Column(
+            horizontalAlignment = Alignment.End,
+            verticalArrangement = Arrangement.Top,
+        ) {
+            Spacer(modifier = Modifier.windowInsetsTopHeight(WindowInsets.statusBars))
+            ExportButton(onClick = onExportClick)
+        }
     }
 
     Column(
@@ -556,7 +578,11 @@ fun HomeScreenStateless(
 fun PreviewHomeScreen() {
     WhatDoinTheme {
         Surface(modifier = Modifier.fillMaxSize()) {
-            HomeScreenStateless("placeholder activity", "1h 23min 45s", {}, {}, {})
+            HomeScreenStateless(
+                "placeholder activity",
+                "1h 23min 45s",
+                true,
+                {}, {}, {})
         }
     }
 }

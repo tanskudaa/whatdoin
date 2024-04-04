@@ -7,15 +7,19 @@ class ActivityRepository(private val activityDao: ActivityDao) {
     suspend fun getAllActivities(): List<Activity> =
         activityDao.getAll()
 
-    suspend fun addAsNewCurrentActivity(activity: Activity) =
+    /**
+     * Returns inserted activity id
+     */
+    suspend fun addAsNewCurrentActivity(activity: Activity): Long =
         activityDao.insert(activity)
 
-    // TODO now that ids are stored in state, get by id instead of getting latest
-    suspend fun changeCurrentActivityDescription(newDescription: String) {
-        val existingActivity = activityDao.getLatestEntry()
+    suspend fun changeCurrentActivityDescription(id: Long, newDescription: String) {
+        val existingActivity = activityDao.getById(id)
 
         if (existingActivity == null) {
-            return
+            // this method call failing has potential for inivisble data loss, so it is better to crash than to
+            // disregard. actual in-use failure shouldn't be possible.
+            throw IllegalArgumentException()
         }
         /* else */
         activityDao.update(existingActivity.copy(

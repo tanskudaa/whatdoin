@@ -18,7 +18,7 @@ interface ActivityDao {
     suspend fun getAll(): List<Activity>
 
     @Insert
-    suspend fun insert(activity: Activity)
+    suspend fun insert(activity: Activity): Long
 
     @Update
     suspend fun update(activity: Activity)
