@@ -2,7 +2,7 @@
 Minimal android app for personal time tracking
 
 ## About
-What Doin' is a native Android app time tracker that lets users measure length of tasks througout the day. It's building principles are simple and non-intrusive user experience, feature minimalism and data privacy.
+What Doin' is a native Android app time tracker that lets users measure length of tasks throughout the day. It's building principles are simple and non-intrusive user experience, feature minimalism and data privacy.
 
 ![Screenshot: home screen](./screenshot1.png)
 ![Screenshot: adding new activity](./screenshot2.png)
